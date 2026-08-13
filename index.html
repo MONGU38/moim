@@ -53,8 +53,8 @@
     color: var(--sub); font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .15s;
   }
   .month-tab.active {
-    background: linear-gradient(135deg, var(--crimson-dark), var(--crimson-mid));
-    color: #fff; border-color: transparent; box-shadow: 0 3px 10px rgba(194,37,92,0.3);
+    background: linear-gradient(135deg, #4a7ba6, #6ea3c9);
+    color: #fff; border-color: transparent; box-shadow: 0 3px 10px rgba(74,123,166,0.3);
   }
   .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .summary-box { background: var(--crimson-light); border-radius: 14px; padding: 14px 10px; text-align: center; border: 1px solid var(--border); }
@@ -111,6 +111,19 @@
 </head>
 <body>
 
+<div id="onboardingScreen" style="display:none;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg, var(--crimson-dark), var(--crimson-mid) 60%, var(--gold));">
+  <div style="background:#fff;border-radius:20px;padding:30px 24px;max-width:360px;width:100%;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,0.3);">
+    <div style="font-size:32px;">🎱</div>
+    <h2 style="margin:8px 0 4px;color:var(--crimson-dark);">모임총무 시작하기</h2>
+    <p style="color:var(--sub);font-size:13px;margin:0 0 18px;">모임 이름을 정하면 나만의 회비관리 공간이 만들어져요.<br>이미 받은 모임 이름이 있다면 그대로 입력하세요.</p>
+    <input type="text" id="onboardingGroupName" placeholder="모임 이름 (예: 75고당회)" onkeydown="if(event.key==='Enter') startOnboarding()">
+    <div class="btn-row" style="margin-top:14px;">
+      <button onclick="startOnboarding()">시작하기</button>
+    </div>
+  </div>
+</div>
+
+<div id="appScreen" style="display:none;">
 <div class="hero">
   <h1>🎱 모임총무</h1>
   <div class="sub">회원별 회비 · 월별 정산 · 잔금 자동 이월</div>
@@ -174,6 +187,7 @@
 <div class="readonly-note" id="readonlyNote"></div>
 
 </div>
+</div>
 
 <div id="modalLayer"></div>
 
@@ -189,7 +203,7 @@ const firebaseConfig = {
   messagingSenderId: "759726428845",
   appId: "1:759726428845:web:b13eca0948299ca4c9ec24"
 };
-const ADMIN_PASSWORD = "1234";
+const DEFAULT_ADMIN_PASSWORD = "1234"; // 모임 최초 생성 시 기본값. 총무가 "모임 관리"에서 직접 변경 가능.
 
 let db = null;
 let firebaseReady = false;
@@ -200,7 +214,8 @@ try {
 } catch (e) { console.warn("Firebase 초기화 실패", e); }
 
 const urlParams = new URLSearchParams(location.search);
-let groupId = urlParams.get('g') || 'default';
+let groupId = urlParams.get('g') || null;
+const LAST_GROUP_KEY = 'moim_last_group';
 
 let state = { members: [], meetings: [], currentMeetingId: null };
 let isAdmin = sessionStorage.getItem('moim_admin') === 'yes';
@@ -208,6 +223,47 @@ let unsubscribe = null;
 
 function uid() { return Date.now() + Math.floor(Math.random() * 1000); }
 function fmt(n) { return (n || 0).toLocaleString('ko-KR') + '원'; }
+
+// ---------- 첫 진입: URL에 모임이 없으면 기억된 모임으로, 없으면 시작화면 ----------
+function initEntry() {
+  if (groupId) {
+    localStorage.setItem(LAST_GROUP_KEY, groupId);
+    showAppScreen();
+    return;
+  }
+  const remembered = localStorage.getItem(LAST_GROUP_KEY);
+  if (remembered) {
+    groupId = remembered;
+    const newUrl = location.pathname + '?g=' + encodeURIComponent(groupId);
+    history.replaceState({}, '', newUrl);
+    showAppScreen();
+    return;
+  }
+  showOnboarding();
+}
+
+function showOnboarding() {
+  document.getElementById('onboardingScreen').style.display = 'flex';
+  document.getElementById('appScreen').style.display = 'none';
+  document.getElementById('onboardingGroupName').focus();
+}
+
+function showAppScreen() {
+  document.getElementById('onboardingScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+  updateAdminUI();
+  subscribeData();
+}
+
+function startOnboarding() {
+  const val = document.getElementById('onboardingGroupName').value.trim();
+  if (!val) { alert('모임 이름을 입력하세요.'); return; }
+  groupId = val;
+  localStorage.setItem(LAST_GROUP_KEY, groupId);
+  const newUrl = location.pathname + '?g=' + encodeURIComponent(groupId);
+  history.replaceState({}, '', newUrl);
+  showAppScreen();
+}
 
 // ---------- 상단 모임 이름/전환 (총무만 드롭다운 노출, 일반 회원은 이름만 표시) ----------
 function updateGroupHeader() {
@@ -254,9 +310,10 @@ function subscribeData() {
       state = docSnap.data();
       if (!state.members) state.members = [];
       if (!state.meetings) state.meetings = [];
+      if (!state.adminPassword) state.adminPassword = DEFAULT_ADMIN_PASSWORD;
       state.meetings.forEach(function (mt) { if (mt.monthlyFee === undefined) mt.monthlyFee = 40000; });
     } else {
-      state = { members: [], meetings: [], currentMeetingId: null };
+      state = { members: [], meetings: [], currentMeetingId: null, adminPassword: DEFAULT_ADMIN_PASSWORD };
     }
     renderAll();
   }, function (err) { console.error('Firestore 구독 오류', err); });
@@ -273,6 +330,7 @@ function saveData() {
 
 function switchGroup(newGroupId) {
   groupId = newGroupId;
+  localStorage.setItem(LAST_GROUP_KEY, groupId);
   const newUrl = location.pathname + '?g=' + encodeURIComponent(groupId);
   history.pushState({}, '', newUrl);
   subscribeData();
@@ -305,6 +363,11 @@ function openGroupModal() {
         <p style="margin-top:18px;">✏️ 현재 모임 이름 바꾸기 <span style="color:var(--sub);font-weight:400;">(회원·기록 유지)</span></p>
         <input type="text" id="renameGroupName" placeholder="새 이름" onkeydown="if(event.key==='Enter') renameGroup()">
         <div class="btn-row"><button onclick="renameGroup()">이 이름으로 변경</button></div>
+
+        <p style="margin-top:18px;">🔑 총무 비밀번호 변경</p>
+        <input type="password" id="curPwInput" placeholder="현재 비밀번호">
+        <input type="password" id="newPwInput" placeholder="새 비밀번호 (4자 이상)" style="margin-top:8px;" onkeydown="if(event.key==='Enter') changeAdminPassword()">
+        <div class="btn-row"><button onclick="changeAdminPassword()">비밀번호 변경</button></div>
 
         <p style="margin-top:18px;">➕ 완전히 새로운 모임 만들기 <span style="color:var(--sub);font-weight:400;">(빈 명부)</span></p>
         <input type="text" id="newGroupName" placeholder="새 모임 이름" onkeydown="if(event.key==='Enter') createGroup()">
@@ -442,12 +505,27 @@ function openLock() {
 
 function checkPassword() {
   const val = document.getElementById('pwInput').value;
-  if (val === ADMIN_PASSWORD) {
+  const currentPw = state.adminPassword || DEFAULT_ADMIN_PASSWORD;
+  if (val === currentPw) {
     isAdmin = true;
     sessionStorage.setItem('moim_admin', 'yes');
     closeModal();
     updateAdminUI();
   } else { alert('비밀번호가 틀렸습니다.'); }
+}
+
+function changeAdminPassword() {
+  if (!isAdmin) return;
+  const cur = document.getElementById('curPwInput').value;
+  const next = document.getElementById('newPwInput').value;
+  const currentPw = state.adminPassword || DEFAULT_ADMIN_PASSWORD;
+  if (cur !== currentPw) { alert('현재 비밀번호가 틀렸습니다.'); return; }
+  if (!next || next.length < 4) { alert('새 비밀번호는 4자 이상으로 입력하세요.'); return; }
+  state.adminPassword = next;
+  saveData();
+  alert('비밀번호가 변경되었습니다.');
+  document.getElementById('curPwInput').value = '';
+  document.getElementById('newPwInput').value = '';
 }
 
 function updateAdminUI() {
@@ -792,8 +870,7 @@ function renderAll() {
   renderMonthDetail();
 }
 
-updateAdminUI();
-subscribeData();
+initEntry();
 </script>
 
 </body>
