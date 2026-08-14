@@ -2,6 +2,9 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>모임총무</title>
 <style>
@@ -82,6 +85,7 @@
   .add-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
   .add-row input { flex: 1; }
   .roster-item { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .roster-item input[type="text"] { padding: 7px 10px; }
   .attend-check { display: flex; align-items: center; gap: 8px; }
   .attend-check input[type="checkbox"] { width: 19px; height: 19px; accent-color: var(--crimson-mid); }
   .paid-badge { display: inline-block; padding: 4px 11px; border-radius: 12px; font-size: 12px; cursor: pointer; font-weight: 700; }
@@ -111,15 +115,17 @@
 </head>
 <body>
 
-<div id="onboardingScreen" style="display:none;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg, var(--crimson-dark), var(--crimson-mid) 60%, var(--gold));">
+<div id="onboardingScreen" style="display:none;min-height:100vh;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg, var(--crimson-dark), var(--crimson-mid) 60%, var(--gold));">
   <div style="background:#fff;border-radius:20px;padding:30px 24px;max-width:360px;width:100%;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,0.3);">
     <div style="font-size:32px;">🎱</div>
     <h2 style="margin:8px 0 4px;color:var(--crimson-dark);">모임총무 시작하기</h2>
     <p style="color:var(--sub);font-size:13px;margin:0 0 18px;">모임 이름을 정하면 나만의 회비관리 공간이 만들어져요.<br>이미 받은 모임 이름이 있다면 그대로 입력하세요.</p>
-    <input type="text" id="onboardingGroupName" placeholder="모임 이름 (예: 75고당회)" onkeydown="if(event.key==='Enter') startOnboarding()">
+    <input type="text" id="onboardingGroupName" list="recentGroupsDatalist" placeholder="모임 이름 (예: 75고당회)" onkeydown="if(event.key==='Enter') startOnboarding()">
+    <datalist id="recentGroupsDatalist"></datalist>
     <div class="btn-row" style="margin-top:14px;">
       <button onclick="startOnboarding()">시작하기</button>
     </div>
+    <div id="recentGroupsBox"></div>
   </div>
 </div>
 
@@ -216,6 +222,7 @@ try {
 const urlParams = new URLSearchParams(location.search);
 let groupId = urlParams.get('g') || null;
 const LAST_GROUP_KEY = 'moim_last_group';
+const RECENT_GROUPS_KEY = 'moim_recent_groups';
 
 let state = { members: [], meetings: [], currentMeetingId: null };
 let isAdmin = sessionStorage.getItem('moim_admin') === 'yes';
@@ -224,27 +231,74 @@ let unsubscribe = null;
 function uid() { return Date.now() + Math.floor(Math.random() * 1000); }
 function fmt(n) { return (n || 0).toLocaleString('ko-KR') + '원'; }
 
+// ---------- 이 기기에서 들어갔던 모임 목록 (본인에게만 보임) ----------
+function getRecentGroups() {
+  try { return JSON.parse(localStorage.getItem(RECENT_GROUPS_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function addRecentGroup(name) {
+  let list = getRecentGroups();
+  list = list.filter(function (g) { return g !== name; });
+  list.unshift(name);
+  list = list.slice(0, 8);
+  localStorage.setItem(RECENT_GROUPS_KEY, JSON.stringify(list));
+}
+
+function removeRecentGroup(name, ev) {
+  if (ev) ev.stopPropagation();
+  let list = getRecentGroups().filter(function (g) { return g !== name; });
+  localStorage.setItem(RECENT_GROUPS_KEY, JSON.stringify(list));
+  renderRecentGroupsList();
+}
+
+function enterGroupFromList(name) {
+  groupId = name;
+  localStorage.setItem(LAST_GROUP_KEY, groupId);
+  addRecentGroup(groupId);
+  const newUrl = location.pathname + '?g=' + encodeURIComponent(groupId);
+  history.replaceState({}, '', newUrl);
+  showAppScreen();
+}
+
+function renderRecentGroupsList() {
+  const list = getRecentGroups();
+
+  const dl = document.getElementById('recentGroupsDatalist');
+  if (dl) {
+    dl.innerHTML = list.map(function (name) {
+      return '<option value="' + name.replace(/"/g, '&quot;') + '">';
+    }).join('');
+  }
+
+  const box = document.getElementById('recentGroupsBox');
+  if (!box) return;
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<p style="color:var(--sub);font-size:12px;margin:16px 0 8px;text-align:left;">📂 최근 들어간 내 모임</p>' +
+    list.map(function (name) {
+      return '<div onclick="enterGroupFromList(\'' + name.replace(/'/g, "\\'") + '\')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;text-align:left;font-size:14px;">' +
+        '<span>' + name + '</span>' +
+        '<span onclick="removeRecentGroup(\'' + name.replace(/'/g, "\\'") + '\', event)" style="color:var(--sub);font-size:12px;padding:2px 6px;">삭제</span>' +
+        '</div>';
+    }).join('');
+}
+
 // ---------- 첫 진입: URL에 모임이 없으면 기억된 모임으로, 없으면 시작화면 ----------
 function initEntry() {
   if (groupId) {
     localStorage.setItem(LAST_GROUP_KEY, groupId);
+    addRecentGroup(groupId);
     showAppScreen();
     return;
   }
-  const remembered = localStorage.getItem(LAST_GROUP_KEY);
-  if (remembered) {
-    groupId = remembered;
-    const newUrl = location.pathname + '?g=' + encodeURIComponent(groupId);
-    history.replaceState({}, '', newUrl);
-    showAppScreen();
-    return;
-  }
+  // 순수 주소(?g= 없음)로 들어오면 예전 기억 여부와 무관하게 항상 시작화면부터 보여준다.
   showOnboarding();
 }
 
 function showOnboarding() {
   document.getElementById('onboardingScreen').style.display = 'flex';
   document.getElementById('appScreen').style.display = 'none';
+  renderRecentGroupsList();
   document.getElementById('onboardingGroupName').focus();
 }
 
@@ -258,11 +312,7 @@ function showAppScreen() {
 function startOnboarding() {
   const val = document.getElementById('onboardingGroupName').value.trim();
   if (!val) { alert('모임 이름을 입력하세요.'); return; }
-  groupId = val;
-  localStorage.setItem(LAST_GROUP_KEY, groupId);
-  const newUrl = location.pathname + '?g=' + encodeURIComponent(groupId);
-  history.replaceState({}, '', newUrl);
-  showAppScreen();
+  enterGroupFromList(val);
 }
 
 // ---------- 상단 모임 이름/전환 (총무만 드롭다운 노출, 일반 회원은 이름만 표시) ----------
@@ -331,6 +381,7 @@ function saveData() {
 function switchGroup(newGroupId) {
   groupId = newGroupId;
   localStorage.setItem(LAST_GROUP_KEY, groupId);
+  addRecentGroup(groupId);
   const newUrl = location.pathname + '?g=' + encodeURIComponent(groupId);
   history.pushState({}, '', newUrl);
   subscribeData();
@@ -750,10 +801,20 @@ function renderRoster() {
   if (!state.members.length) { box.innerHTML = '<div class="empty">등록된 회원이 없습니다.</div>'; return; }
   box.innerHTML = state.members.map(m => `
     <div class="roster-item">
-      <span>${m.name}</span>
+      ${isAdmin
+        ? `<input type="text" value="${m.name.replace(/"/g, '&quot;')}" style="flex:1;margin-right:8px;" onchange="updateMemberName(${m.id}, this.value)">`
+        : `<span>${m.name}</span>`}
       ${isAdmin ? `<button class="danger" onclick="removeMember(${m.id})">삭제</button>` : ''}
     </div>
   `).join('');
+}
+
+function updateMemberName(id, value) {
+  if (!isAdmin) return;
+  const name = value.trim();
+  if (!name) { alert('이름은 비워둘 수 없습니다.'); renderAll(); return; }
+  const m = state.members.find(m => m.id === id);
+  if (m) { m.name = name; saveData(); }
 }
 
 function renderMonthTabs() {
