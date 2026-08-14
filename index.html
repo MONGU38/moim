@@ -523,7 +523,15 @@ function openMonthModal() {
 function confirmAddMonth() {
   const val = document.getElementById('newMonthLabel').value.trim();
   if (!val) { alert('회차 이름을 입력하세요.'); return; }
-  const meeting = { id: uid(), label: val, attendees: [], extraIncome: [], expenses: [], carryForward: 0, monthlyFee: 40000 };
+
+  let autoCarry = 0;
+  if (state.meetings.length) {
+    const prev = state.meetings[state.meetings.length - 1];
+    const prevTotals = calcMeetingTotals(prev);
+    autoCarry = (prev.carryForward || 0) + prevTotals.net;
+  }
+
+  const meeting = { id: uid(), label: val, attendees: [], extraIncome: [], expenses: [], carryForward: autoCarry, monthlyFee: 40000 };
   state.meetings.push(meeting);
   state.currentMeetingId = meeting.id;
   closeModal();
@@ -877,7 +885,7 @@ function renderMonthDetail() {
         ${isAdmin ? `<button class="danger" onclick="removeMonth(${mt.id})">이 회차 삭제</button>` : ''}
       </div>
       <div class="summary-grid">
-        <div class="summary-box">${isAdmin ? `<input type="number" class="fee-input" style="width:100%;text-align:center;font-weight:800;font-size:16px;" value="${carried}" onchange="updateCarryForward(${mt.id}, this.value)">` : `<div class="num">${fmt(carried)}</div>`}<div class="label">전 회차 이월잔금 (직접입력)</div></div>
+        <div class="summary-box">${isAdmin ? `<input type="number" class="fee-input" style="width:100%;text-align:center;font-weight:800;font-size:16px;" value="${carried}" onchange="updateCarryForward(${mt.id}, this.value)">` : `<div class="num">${fmt(carried)}</div>`}<div class="label">전 회차 이월잔금 (자동계산, 수정 가능)</div></div>
         <div class="summary-box"><div class="num">${fmt(totals.totalIncome)}</div><div class="label">이번 회차 수입</div></div>
         <div class="summary-box"><div class="num">${fmt(totals.totalExpense)}</div><div class="label">이번 회차 지출</div></div>
         <div class="summary-box balance"><div class="num">${fmt(finalBalance)}</div><div class="label">최종 잔금</div></div>
