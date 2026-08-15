@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.mongu38.moim",
+        "sha256_cert_fingerprints": ["ED:38:29:C9:11:AE:F9:B2:B4:CF:23:B1:A5:C6:D1:81:43:9F:FC:B4:27:1E:CE:9E:43:1C:EE:F9:BC:0D:7B:4B"]
+      }
+    }]
