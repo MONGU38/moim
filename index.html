@@ -6,11 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>모임앱</title>
-<link rel="manifest" href="./manifest.json">
-<link rel="icon" href="./icon-192.png">
-<link rel="apple-touch-icon" href="./icon-192.png">
-<meta name="theme-color" content="#8a1a44">
+<title>모임총무</title>
 <style>
   :root {
     --crimson: #c2255c;
@@ -122,7 +118,7 @@
 <div id="onboardingScreen" style="display:none;min-height:100vh;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg, var(--crimson-dark), var(--crimson-mid) 60%, var(--gold));">
   <div style="background:#fff;border-radius:20px;padding:30px 24px;max-width:360px;width:100%;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,0.3);">
     <div style="font-size:32px;">🎱</div>
-    <h2 style="margin:8px 0 4px;color:var(--crimson-dark);">모임앱 시작하기</h2>
+    <h2 style="margin:8px 0 4px;color:var(--crimson-dark);">모임총무 시작하기</h2>
     <p style="color:var(--sub);font-size:13px;margin:0 0 18px;">모임 이름을 정하면 나만의 회비관리 공간이 만들어져요.<br>이미 받은 모임 이름이 있다면 그대로 입력하세요.</p>
     <input type="text" id="onboardingGroupName" list="recentGroupsDatalist" placeholder="모임 이름 (예: 75고당회)" onkeydown="if(event.key==='Enter') startOnboarding()">
     <datalist id="recentGroupsDatalist"></datalist>
@@ -135,7 +131,7 @@
 
 <div id="appScreen" style="display:none;">
 <div class="hero">
-  <h1>🎱 모임앱</h1>
+  <h1>🎱 모임총무</h1>
   <div class="sub">회원별 회비 · 월별 정산 · 잔금 자동 이월</div>
   <div class="group-name">
     모임: <span id="groupNameText">-</span>
@@ -606,6 +602,7 @@ function addMember() {
   const el = document.getElementById('newMemberName');
   const name = el.value.trim();
   if (!name) { alert('이름을 입력하세요.'); return; }
+  if (state.members.some(m => m.name === name)) { alert('이미 등록된 이름입니다: ' + name); return; }
   state.members.push({ id: uid(), name: name });
   el.value = '';
   saveData();
@@ -631,6 +628,9 @@ function bulkAddMembers() {
 
 function removeMember(id) {
   if (!isAdmin) return;
+  const m = state.members.find(m => m.id === id);
+  const name = m ? m.name : '이 회원';
+  if (!confirm('"' + name + '"을(를) 명부에서 삭제할까요? 모든 회차의 참석·회비 기록도 함께 삭제됩니다.')) return;
   state.members = state.members.filter(m => m.id !== id);
   state.meetings.forEach(mt => { mt.attendees = mt.attendees.filter(a => a.memberId !== id); });
   saveData();
@@ -825,6 +825,7 @@ function updateMemberName(id, value) {
   if (!isAdmin) return;
   const name = value.trim();
   if (!name) { alert('이름은 비워둘 수 없습니다.'); renderAll(); return; }
+  if (state.members.some(m => m.name === name && m.id !== id)) { alert('이미 등록된 이름입니다: ' + name); renderAll(); return; }
   const m = state.members.find(m => m.id === id);
   if (m) { m.name = name; saveData(); }
 }
@@ -847,7 +848,14 @@ function renderMonthDetail() {
   const carried = mt.carryForward || 0;
   const finalBalance = carried + totals.net;
 
-  const attendeeRows = state.members.map(m => {
+  const sortedMembers = state.members.slice().sort((a, b) => {
+    const aChecked = mt.attendees.some(x => x.memberId === a.id);
+    const bChecked = mt.attendees.some(x => x.memberId === b.id);
+    if (aChecked === bChecked) return 0;
+    return aChecked ? -1 : 1;
+  });
+
+  const attendeeRows = sortedMembers.map(m => {
     const a = mt.attendees.find(x => x.memberId === m.id);
     const checked = !!a;
     return `
@@ -944,12 +952,6 @@ function renderAll() {
 }
 
 initEntry();
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW 등록 실패', e));
-  });
-}
 </script>
 
 </body>
