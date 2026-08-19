@@ -630,9 +630,24 @@ function removeMember(id) {
   if (!isAdmin) return;
   const m = state.members.find(m => m.id === id);
   const name = m ? m.name : '이 회원';
-  if (!confirm('"' + name + '"을(를) 명부에서 삭제할까요? 모든 회차의 참석·회비 기록도 함께 삭제됩니다.')) return;
+  document.getElementById('modalLayer').innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <h3>회원 삭제</h3>
+        <p>"${name}"을(를) 명부에서 삭제할까요?<br>모든 회차의 참석·회비 기록도 함께 삭제됩니다.</p>
+        <div class="btn-row">
+          <button class="secondary" onclick="closeModal()">취소</button>
+          <button style="background:#fff;color:var(--red);border:1px solid #f3c2c2;box-shadow:none;" onclick="confirmRemoveMember(${id})">삭제</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function confirmRemoveMember(id) {
   state.members = state.members.filter(m => m.id !== id);
   state.meetings.forEach(mt => { mt.attendees = mt.attendees.filter(a => a.memberId !== id); });
+  closeModal();
   saveData();
 }
 
@@ -689,11 +704,28 @@ function copyRosterToGroup() {
 // ---------- 회차(월별 모임) ----------
 function removeMonth(id) {
   if (!isAdmin) return;
-  if (!confirm('이 회차 기록을 삭제할까요?')) return;
+  const mt = getMeeting(id);
+  const label = mt ? mt.label : '이 회차';
+  document.getElementById('modalLayer').innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <h3>회차 삭제</h3>
+        <p>"${label}" 회차 기록을 삭제할까요?</p>
+        <div class="btn-row">
+          <button class="secondary" onclick="closeModal()">취소</button>
+          <button style="background:#fff;color:var(--red);border:1px solid #f3c2c2;box-shadow:none;" onclick="confirmRemoveMonth(${id})">삭제</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function confirmRemoveMonth(id) {
   state.meetings = state.meetings.filter(m => m.id !== id);
   if (state.currentMeetingId === id) {
     state.currentMeetingId = state.meetings.length ? state.meetings[state.meetings.length - 1].id : null;
   }
+  closeModal();
   saveData();
 }
 
@@ -725,8 +757,24 @@ function updateMonthlyFee(meetingId, value) {
 function applyMonthlyFeeToAll(meetingId) {
   if (!isAdmin) return;
   const mt = getMeeting(meetingId);
-  if (!confirm('참석한 모든 회원의 회비를 ' + fmt(mt.monthlyFee || 0) + '(으)로 일괄 적용할까요? (개별 수정한 금액도 덮어씁니다)')) return;
+  document.getElementById('modalLayer').innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <h3>회비 일괄 적용</h3>
+        <p>참석한 모든 회원의 회비를 ${fmt(mt.monthlyFee || 0)}(으)로 일괄 적용할까요?<br>개별 수정한 금액도 덮어씁니다.</p>
+        <div class="btn-row">
+          <button class="secondary" onclick="closeModal()">취소</button>
+          <button onclick="confirmApplyMonthlyFeeToAll(${meetingId})">적용</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function confirmApplyMonthlyFeeToAll(meetingId) {
+  const mt = getMeeting(meetingId);
   mt.attendees.forEach(function (a) { a.fee = mt.monthlyFee || 0; });
+  closeModal();
   saveData();
 }
 
