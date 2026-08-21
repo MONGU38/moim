@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>모임총무앱</title>
+<title>모임총무</title>
 <style>
   :root {
     --crimson: #c2255c;
@@ -361,7 +361,10 @@ function subscribeData() {
       if (!state.members) state.members = [];
       if (!state.meetings) state.meetings = [];
       if (!state.adminPassword) state.adminPassword = DEFAULT_ADMIN_PASSWORD;
-      state.meetings.forEach(function (mt) { if (mt.monthlyFee === undefined) mt.monthlyFee = 40000; });
+      state.meetings.forEach(function (mt) {
+        if (mt.monthlyFee === undefined) mt.monthlyFee = 40000;
+        mt.attendees.forEach(function (a, idx) { if (a.checkedAt === undefined) a.checkedAt = idx; });
+      });
     } else {
       state = { members: [], meetings: [], currentMeetingId: null, adminPassword: DEFAULT_ADMIN_PASSWORD };
     }
@@ -737,7 +740,7 @@ function toggleAttend(meetingId, memberId, checked) {
   const mt = getMeeting(meetingId);
   if (checked) {
     if (!mt.attendees.find(a => a.memberId === memberId)) {
-      mt.attendees.push({ memberId: memberId, fee: mt.monthlyFee || 40000, paid: false });
+      mt.attendees.push({ memberId: memberId, fee: mt.monthlyFee || 40000, paid: false, checkedAt: Date.now() });
     }
   } else {
     mt.attendees = mt.attendees.filter(a => a.memberId !== memberId);
@@ -897,10 +900,13 @@ function renderMonthDetail() {
   const finalBalance = carried + totals.net;
 
   const sortedMembers = state.members.slice().sort((a, b) => {
-    const aChecked = mt.attendees.some(x => x.memberId === a.id);
-    const bChecked = mt.attendees.some(x => x.memberId === b.id);
-    if (aChecked === bChecked) return 0;
-    return aChecked ? -1 : 1;
+    const aAtt = mt.attendees.find(x => x.memberId === a.id);
+    const bAtt = mt.attendees.find(x => x.memberId === b.id);
+    const aChecked = !!aAtt;
+    const bChecked = !!bAtt;
+    if (aChecked !== bChecked) return aChecked ? -1 : 1;
+    if (aChecked && bChecked) return (aAtt.checkedAt || 0) - (bAtt.checkedAt || 0);
+    return 0;
   });
 
   const attendeeRows = sortedMembers.map(m => {
