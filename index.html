@@ -209,6 +209,7 @@ const firebaseConfig = {
   messagingSenderId: "759726428845",
   appId: "1:759726428845:web:b13eca0948299ca4c9ec24"
 };
+const APP_VERSION = "20260821-1"; // 코드 수정할 때마다 이 값을 바꾸면 회원 화면이 자동으로 최신화됨
 const DEFAULT_ADMIN_PASSWORD = "1234"; // 모임 최초 생성 시 기본값. 총무가 "모임 관리"에서 직접 변경 가능.
 
 let db = null;
@@ -1004,6 +1005,26 @@ function renderAll() {
   renderMonthTabs();
   renderMonthDetail();
 }
+
+// ---------- 자동 업데이트 감지 (새 버전 배포되면 자동으로 최신화) ----------
+function checkForUpdate() {
+  const url = location.pathname + '?__chk=' + Date.now();
+  fetch(url, { cache: 'no-store' }).then(function (res) {
+    return res.text();
+  }).then(function (text) {
+    const m = text.match(/APP_VERSION\s*=\s*"([^"]+)"/);
+    if (m && m[1] && m[1] !== APP_VERSION) {
+      const bust = (location.search ? location.search + '&' : '?') + '_r=' + Date.now();
+      location.href = location.pathname + bust;
+    }
+  }).catch(function () {});
+}
+
+setTimeout(checkForUpdate, 2000);
+setInterval(checkForUpdate, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') checkForUpdate();
+});
 
 initEntry();
 </script>
